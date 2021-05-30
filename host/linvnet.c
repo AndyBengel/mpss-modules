@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Intel Corporation.
+ * Copyright 2010-2017 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -203,7 +203,11 @@ static const struct net_device_ops veth_netdev_ops = {
 	.ndo_set_multicast_list = micveth_multicast_list,
 #endif
 	.ndo_set_mac_address	= micveth_set_address,
-	.ndo_change_mtu		= micveth_change_mtu,
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,10,0)
+	.ndo_change_mtu_rh74	= micveth_change_mtu,
+#else
+	.ndo_change_mtu			= micveth_change_mtu,
+#endif
 };
 #endif
 
@@ -221,7 +225,11 @@ micveth_setup(struct net_device *dev)
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,28)
 	dev->netdev_ops = &veth_netdev_ops;
 #endif
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0)
+	dev->priv_destructor = free_netdev;
+#else
 	dev->destructor = free_netdev;
+#endif
 
 	/* Fill in device structure with ethernet-generic values. */
 	dev->mtu = (MICVETH_MAX_PACKET_SIZE);
@@ -230,8 +238,13 @@ micveth_setup(struct net_device *dev)
 	random_ether_addr(dev->dev_addr);
 }
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0)
+static int
+micveth_validate(struct nlattr *tb[], struct nlattr *data[], struct netlink_ext_ack *extack)
+#else
 static int
 micveth_validate(struct nlattr *tb[], struct nlattr *data[])
+#endif
 {
 	if (tb[IFLA_ADDRESS]) {
 		if (nla_len(tb[IFLA_ADDRESS]) != ETH_ALEN)
@@ -320,8 +333,11 @@ micveth_probe_int(micveth_info_t *veth_info, mic_ctx_t *mic_ctx)
 		desc->rd_length = packet[idx].pd_length;
 		desc->rd_valid = 1;
 	}
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)
+	if ((dev_veth = alloc_netdev(sizeof(micveth_info_t), "mic%d", micveth_setup)) == NULL) {
+#else
 	if ((dev_veth = alloc_netdev(sizeof(micveth_info_t), "mic%d", NET_NAME_UNKNOWN, micveth_setup)) == NULL) {
+#endif
 		return -ENOMEM;
 	}
 
@@ -341,7 +357,7 @@ micveth_probe_int(micveth_info_t *veth_info, mic_ctx_t *mic_ctx)
 
 static ssize_t show_veth(struct device *dev,
 			 struct device_attribute *attr, char *buf);
-DEVICE_ATTR(veth, S_IRUGO|S_IWUSR|S_IWGRP, show_veth, NULL);
+DEVICE_ATTR(veth, S_IRUGO, show_veth, NULL);
 
 static int
 micveth_init_int(int num_bds, struct device *dev)

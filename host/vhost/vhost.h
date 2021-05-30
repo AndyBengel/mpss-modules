@@ -20,6 +20,7 @@
 #include <linux/virtio_config.h>
 #include <linux/virtio_ring.h>
 #include <asm/atomic.h>
+#include <asm/barrier.h>
 
 /* This is for zerocopy, used buffer len is set to 1 when lower device DMA
  * done */
@@ -45,7 +46,11 @@ struct vhost_work {
 struct vhost_poll {
 	poll_table                table;
 	wait_queue_head_t        *wqh;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0))
+	wait_queue_entry_t        wait;
+#else
 	wait_queue_t              wait;
+#endif
 	struct vhost_work	  work;
 	unsigned long		  mask;
 	struct vhost_dev	 *dev;
@@ -205,6 +210,30 @@ int vhost_zerocopy_signal_used(struct vhost_virtqueue *vq);
 				eventfd_signal((vq)->error_ctx, 1);\
 	} while (0)
 
+#ifndef __rcu_dereference_index_check
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,3,0))
+#define __rcu_dereference_index_check(p, c) \
+	({ \
+	 typeof(p) _________p1 = ACCESS_ONCE(p); \
+	 rcu_lockdep_assert(c, \
+		 "suspicious rcu_dereference_index_check()" \
+		 " usage"); \
+	 smp_read_barrier_depends(); \
+	 (_________p1); \
+	 })
+#else
+#define __rcu_dereference_index_check(p, c) \
+	({ \
+	 typeof(p) _________p1 = ACCESS_ONCE(p); \
+	 RCU_LOCKDEP_WARN(c, \
+		 "suspicious rcu_dereference_index_check()" \
+		 " usage"); \
+	 smp_read_barrier_depends(); \
+	 (_________p1); \
+	})
+#endif
+#endif
+
 enum {
 	VHOST_FEATURES = (1ULL << VIRTIO_F_NOTIFY_ON_EMPTY) |
 			 (1ULL << VIRTIO_RING_F_INDIRECT_DESC) |
@@ -216,6 +245,10 @@ enum {
 
 static inline int vhost_has_feature(struct vhost_dev *dev, int bit)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,0))
+	unsigned acked_features = smp_load_acquire(&(dev->acked_features));
+#else
+
 #ifdef RHEL_RELEASE_CODE
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
 	unsigned acked_features = rcu_dereference_index_check(dev->acked_features, rcu_read_lock_held());
@@ -223,9 +256,14 @@ static inline int vhost_has_feature(struct vhost_dev *dev, int bit)
 	unsigned acked_features = rcu_dereference(dev->acked_features);
 #endif
 #else
-	unsigned acked_features = smp_load_acquire(&(dev->acked_features));
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0))
+	unsigned acked_features = rcu_dereference_index_check(dev->acked_features, rcu_read_lock_held());
+#else
+	unsigned acked_features = __rcu_dereference_index_check(dev->acked_features, rcu_read_lock_held());
+#endif
 #endif
 
+#endif
 	return acked_features & (1 << bit);
 }
 

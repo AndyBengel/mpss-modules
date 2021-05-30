@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Intel Corporation.
+ * Copyright 2010-2017 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -45,6 +45,7 @@
 #include <linux/errno.h>
 #include <linux/poll.h>
 #include <linux/pci.h>
+#include <linux/sched/mm.h>
 
 #ifdef __cplusplus
 extern "C" {

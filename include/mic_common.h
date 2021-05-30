@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Intel Corporation.
+ * Copyright 2010-2017 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -415,7 +415,11 @@ typedef struct _mic_ctx_t {
 	product_family_t	bi_family;
 	struct board_info	*bd_info;
 	sysfs_info_t		sysfs_info;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
 	struct kernfs_node	*sysfs_state;
+#else
+	struct sysfs_dirent	*sysfs_state;
+#endif
 	spinlock_t		sysfs_lock;
 	mic_dma_handle_t	dma_handle;
 	uint32_t		boot_mem;
@@ -472,7 +476,7 @@ int sku_create_node(uint32_t fuserev_low,
 		uint32_t mem_freq, char *sku_name,
 		sku_info_t ** newnode);
 
-void sku_build_table(mic_ctx_t *mic_ctx);
+int sku_build_table(void);
 void sku_destroy_table(void);
 int sku_find(mic_ctx_t *mic_ctx, uint32_t device_id);
 

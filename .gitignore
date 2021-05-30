@@ -1,0 +1,10 @@
+.cache.mk
+*.d
+*.ko
+*.o
+*.symvers
+*.order
+*.mod
+*.cmd
+*.ur-safe
+*.orig

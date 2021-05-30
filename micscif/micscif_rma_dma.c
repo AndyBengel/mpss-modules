@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Intel Corporation.
+ * Copyright 2010-2017 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -46,6 +46,11 @@
 #ifndef _MIC_SCIF_
 #include "mic_common.h"
 #endif
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0)
+#include <linux/nmi.h>
+#endif
+
+static unsigned long timer_fired = 0;
 
 static __always_inline
 void *get_local_va(off_t off, struct reg_range_t *window, size_t len)
@@ -355,7 +360,10 @@ static int micscif_rma_list_dma_copy_unaligned(struct mic_copy_work *work, uint8
 					return ret;
 				}
 			} else {
-				ret = do_dma(chan, 0, temp_dma_addr, window_dma_addr,
+				int flags = 0;
+				if (remaining_len == loop_len + L1_CACHE_BYTES)
+					flags = DO_DMA_POLLING;
+				ret = do_dma(chan, flags, temp_dma_addr, window_dma_addr,
 						loop_len, NULL);
 			}
 		} else {
@@ -595,7 +603,10 @@ static int micscif_rma_list_dma_copy_aligned(struct mic_copy_work *work, struct 
 				return ret;
 			}
 		} else {
-			ret = do_dma(chan, 0, src_dma_addr, dst_dma_addr,
+			int flags = 0;
+			if (remaining_len == loop_len + L1_CACHE_BYTES)
+				flags = DO_DMA_POLLING;
+			ret = do_dma(chan, flags, src_dma_addr, dst_dma_addr,
 					loop_len, NULL);
 			if (ret < 0) {
 				printk(KERN_ERR "%s %d Desc Prog Failed ret %d\n", 
@@ -817,10 +828,18 @@ error:
 
 #if !defined(WINDOWS) && !defined(CONFIG_PREEMPT)
 static int softlockup_threshold = 60;
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0)
+static void avert_softlockup(struct timer_list *t)
+{
+	timer_fired = 1;
+}
+#else
 static void avert_softlockup(unsigned long data)
 {
 	*(unsigned long*)data = 1;
 }
+#endif
 
 /*
  * Add a timer to handle the case of hogging the cpu for
@@ -833,8 +852,13 @@ static void avert_softlockup(unsigned long data)
  */
 static inline void add_softlockup_timer(struct timer_list *timer, unsigned long *data)
 {
+#if LINUX_VERSION_CODE > KERNEL_VERSION(4,14,0)
+	timer_setup(timer, avert_softlockup, 0);
+#else
 	setup_timer(timer, avert_softlockup, (unsigned long) data);
+#endif
 	timer->expires = jiffies + usecs_to_jiffies(softlockup_threshold * 1000000 / 3);
+
 	add_timer(timer);
 }
 
@@ -867,7 +891,6 @@ int micscif_rma_list_cpu_copy(struct mic_copy_work *work)
     uint64_t src_start_offset, dst_start_offset;
 	int ret = 0;
 #if !defined(WINDOWS) && !defined(CONFIG_PREEMPT)
-	unsigned long timer_fired = 0;
 	struct timer_list timer;
 	int cpu = smp_processor_id();
 	add_softlockup_timer(&timer, &timer_fired);
