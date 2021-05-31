@@ -1,19 +1,18 @@
 Intel MPSS Kernel Modules
 ===============================
 
-This repository contains patched Intel MPSS modules 3.6.1 to work
+This repository contains patched Intel MPSS modules 3.6.8 to work
 with more recent Linux Kernels. Currently it is only tested on:
 
-* Ubuntu 14.10 with Linux 4.2.0 and gcc 5.2.1
+* Ubuntu 18.04 with Linux 4.15.0 and gcc 7.5.0
 
-It should work on any distributions with Kernel version 4.2.0.
 
 Requirements
 ------------
 
 Before building the kernel modules, make sure you have all tools necessary to
 build the Linux Kernel (e.g., GCC, Make, etc.) and the kernel source or
-headers. On Ubuntu 14.10, should be enough to have the following packages
+headers. On Ubuntu 18.04, should be enough to have the following packages
 installed:
 
 * build-essential
